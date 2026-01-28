@@ -18,15 +18,13 @@ export async function POST(request: NextRequest) {
     let text = '';
 
     if (fileName.endsWith('.pdf')) {
-      // Parse PDF using pdf-parse
+      // Parse PDF using pdf-parse v1.x (server-compatible)
       console.log('Parsing PDF...');
       try {
-        const { PDFParse } = await import('pdf-parse');
-        const parser = new PDFParse({ data: new Uint8Array(buffer) });
-        const textResult = await parser.getText();
-        text = textResult.text || '';
+        const pdfParse = (await import('pdf-parse')).default;
+        const data = await pdfParse(buffer);
+        text = data.text || '';
         console.log('Extracted text length:', text.length);
-        await parser.destroy();
       } catch (pdfError: any) {
         console.error('PDF parsing error:', pdfError?.message);
         throw pdfError;
