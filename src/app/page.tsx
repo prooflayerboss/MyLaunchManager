@@ -61,7 +61,7 @@ export default function Home() {
             style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}
           >
             <Zap className="w-4 h-4" />
-            Built for people who ship
+            Built for launch managers
           </div>
 
           {/* Main headline */}
@@ -81,7 +81,7 @@ export default function Home() {
           >
             Plan launches. Track programs. Hit deadlines.
             <br className="hidden md:block" />
-            One simple place for everything you're shipping.
+            One simple place for everything you're launching.
           </p>
 
           {/* CTA buttons */}
@@ -354,7 +354,7 @@ export default function Home() {
             <span className="font-medium" style={{ color: 'var(--text-primary)' }}>My Launch Manager</span>
           </div>
           <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-            Built for people who ship.
+            Built for launch managers.
           </p>
         </div>
       </footer>
