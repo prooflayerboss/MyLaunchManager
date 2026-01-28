@@ -18,12 +18,13 @@ export async function POST(request: NextRequest) {
     let text = '';
 
     if (fileName.endsWith('.pdf')) {
-      // Parse PDF using pdf-parse v1.x (server-compatible)
+      // Parse PDF using unpdf (server-compatible)
       console.log('Parsing PDF...');
       try {
-        const pdfParse = (await import('pdf-parse')).default;
-        const data = await pdfParse(buffer);
-        text = data.text || '';
+        const { extractText } = await import('unpdf');
+        const result = await extractText(buffer);
+        // unpdf returns text as an array of strings (one per page)
+        text = Array.isArray(result.text) ? result.text.join('\n\n') : (result.text || '');
         console.log('Extracted text length:', text.length);
       } catch (pdfError: any) {
         console.error('PDF parsing error:', pdfError?.message);
