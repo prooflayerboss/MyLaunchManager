@@ -1452,8 +1452,9 @@ function UpdatesTab({ generatedUpdate, generatingUpdate, generateUpdate, copyUpd
               onClick={() => {
                 setSelectedType(null);
                 setSelectedNoteId('');
+                setGeneratedUpdate('');
               }}
-              className="text-sm px-3 py-1.5 rounded-lg"
+              className="text-sm px-3 py-1.5 rounded-lg hover:opacity-80 transition-opacity cursor-pointer"
               style={{ color: 'var(--text-secondary)', background: 'var(--bg-secondary)' }}
             >
               Back to options
