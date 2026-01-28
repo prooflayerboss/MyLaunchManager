@@ -10,12 +10,12 @@ import {
   Edit2, Archive, Trash2, Plus, Check, X, GripVertical,
   AlertTriangle, FileText, Clock, Target, ChevronRight, Copy,
   Sparkles, Send, CheckCircle2, Upload, MessageSquare, CalendarCheck,
-  FileBarChart, RefreshCw
+  FileBarChart, RefreshCw, Download, BarChart3
 } from 'lucide-react';
-import { Partner, Workstream, Milestone, Risk, Note, WorkstreamStatus } from '@/types';
-import { format, differenceInDays } from 'date-fns';
+import { Partner, Workstream, Milestone, Risk, Note, WorkstreamStatus, ProjectTask, ProjectTaskStatus } from '@/types';
+import { format, differenceInDays, eachWeekOfInterval, startOfWeek, endOfWeek, isWithinInterval, parseISO } from 'date-fns';
 
-type Tab = 'overview' | 'workstreams' | 'timeline' | 'risks' | 'notes' | 'updates';
+type Tab = 'overview' | 'workstreams' | 'timeline' | 'risks' | 'notes' | 'updates' | 'project_plan';
 
 const WORKSTREAM_COLUMNS: { status: WorkstreamStatus; label: string; color: string }[] = [
   { status: 'not_started', label: 'Not Started', color: '#6B7280' },
@@ -39,6 +39,7 @@ export default function PartnerDetailPage() {
   const [milestones, setMilestones] = useState<Milestone[]>([]);
   const [risks, setRisks] = useState<Risk[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
+  const [projectTasks, setProjectTasks] = useState<ProjectTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>('overview');
   const [editingStatus, setEditingStatus] = useState(false);
@@ -214,6 +215,7 @@ Workstreams: ${workstreams.filter(w => w.status === 'complete').length}/${workst
   const tabs: { id: Tab; label: string; count?: number }[] = [
     { id: 'overview', label: 'Overview' },
     { id: 'workstreams', label: workstreamLabelPlural, count: workstreams.length },
+    { id: 'project_plan', label: 'Project Plan', count: projectTasks.length },
     { id: 'timeline', label: 'Timeline', count: milestones.length },
     { id: 'risks', label: 'Risks', count: openRisks },
     { id: 'notes', label: 'Notes', count: notes.length },
@@ -349,6 +351,17 @@ Workstreams: ${workstreams.filter(w => w.status === 'complete').length}/${workst
             setShowModal={setShowWorkstreamModal}
             editingItem={editingWorkstream}
             setEditingItem={setEditingWorkstream}
+          />
+        )}
+
+        {/* Project Plan Tab */}
+        {activeTab === 'project_plan' && (
+          <ProjectPlanTab
+            projectTasks={projectTasks}
+            setProjectTasks={setProjectTasks}
+            partnerId={partnerId}
+            partnerName={partner.name}
+            supabase={supabase}
           />
         )}
 
@@ -1647,6 +1660,449 @@ function Modal({ title, onClose, children, wide }: { title: string; onClose: () 
           {children}
         </div>
       </div>
+    </div>
+  );
+}
+
+// Project Plan Tab Component with Gantt Chart
+function ProjectPlanTab({
+  projectTasks,
+  setProjectTasks,
+  partnerId,
+  partnerName,
+  supabase,
+}: {
+  projectTasks: ProjectTask[];
+  setProjectTasks: (tasks: ProjectTask[]) => void;
+  partnerId: string;
+  partnerName: string;
+  supabase: any;
+}) {
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState('');
+  const [exporting, setExporting] = useState(false);
+  const [viewMode, setViewMode] = useState<'gantt' | 'table'>('gantt');
+  const [dragActive, setDragActive] = useState(false);
+
+  const STATUS_COLORS: Record<string, string> = {
+    complete: '#22C55E',
+    in_progress: '#3B82F6',
+    blocked: '#EF4444',
+    not_started: '#9CA3AF',
+  };
+
+  const STATUS_LABELS: Record<string, string> = {
+    complete: 'Complete',
+    in_progress: 'In Progress',
+    blocked: 'Blocked',
+    not_started: 'Not Started',
+  };
+
+  const handleFileUpload = async (file: File) => {
+    setUploading(true);
+    setUploadError('');
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const response = await fetch('/api/parse-csv', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        setUploadError(result.error || 'Failed to parse CSV');
+        setUploading(false);
+        return;
+      }
+
+      // Convert parsed tasks to ProjectTask format
+      const tasks: ProjectTask[] = result.tasks.map((task: any, index: number) => ({
+        id: `temp_${index}`,
+        partner_id: partnerId,
+        task_id: task.task_id,
+        phase: task.phase,
+        name: task.name,
+        description: task.description,
+        owner: task.owner,
+        start_date: task.start_date,
+        end_date: task.end_date,
+        status: task.status as ProjectTaskStatus,
+        dependencies: task.dependencies,
+        notes: task.notes,
+        sort_order: index,
+        created_at: new Date().toISOString(),
+      }));
+
+      setProjectTasks(tasks);
+    } catch (error) {
+      setUploadError('Failed to upload file. Please try again.');
+    }
+
+    setUploading(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragActive(false);
+    const file = e.dataTransfer.files[0];
+    if (file) handleFileUpload(file);
+  };
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const response = await fetch('/api/export-project-plan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tasks: projectTasks,
+          partnerName,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Export failed');
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${partnerName}_Project_Plan_${format(new Date(), 'yyyy-MM-dd')}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error('Export failed:', error);
+    }
+    setExporting(false);
+  };
+
+  // Group tasks by phase
+  const phases = [...new Set(projectTasks.map(t => t.phase).filter(Boolean))];
+
+  // Calculate date range for Gantt
+  const getDateRange = () => {
+    if (projectTasks.length === 0) return { weeks: [], minDate: new Date(), maxDate: new Date() };
+
+    const dates = projectTasks.flatMap(t => [
+      t.start_date ? parseISO(t.start_date) : new Date(),
+      t.end_date ? parseISO(t.end_date) : new Date(),
+    ]);
+    const minDate = new Date(Math.min(...dates.map(d => d.getTime())));
+    const maxDate = new Date(Math.max(...dates.map(d => d.getTime())));
+
+    // Add some padding
+    minDate.setDate(minDate.getDate() - 7);
+    maxDate.setDate(maxDate.getDate() + 7);
+
+    const weeks = eachWeekOfInterval({ start: minDate, end: maxDate });
+    return { weeks, minDate, maxDate };
+  };
+
+  const { weeks, minDate, maxDate } = getDateRange();
+
+  // Calculate task position and width in Gantt
+  const getTaskStyle = (task: ProjectTask) => {
+    if (!task.start_date || !task.end_date || weeks.length === 0) {
+      return { left: '0%', width: '0%' };
+    }
+
+    const totalDays = differenceInDays(maxDate, minDate);
+    const startOffset = differenceInDays(parseISO(task.start_date), minDate);
+    const duration = differenceInDays(parseISO(task.end_date), parseISO(task.start_date)) + 1;
+
+    const left = (startOffset / totalDays) * 100;
+    const width = (duration / totalDays) * 100;
+
+    return {
+      left: `${Math.max(0, left)}%`,
+      width: `${Math.min(100 - left, width)}%`,
+    };
+  };
+
+  if (projectTasks.length === 0) {
+    return (
+      <div className="p-6">
+        <div className="text-center py-12">
+          <div
+            onDrop={handleDrop}
+            onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
+            onDragLeave={() => setDragActive(false)}
+            className={`max-w-md mx-auto p-8 rounded-2xl border-2 border-dashed transition-all ${dragActive ? 'border-[var(--accent)] bg-[var(--accent-soft)]' : ''}`}
+            style={{
+              borderColor: dragActive ? 'var(--accent)' : 'var(--border)',
+              background: dragActive ? 'var(--accent-soft)' : 'var(--bg-secondary)',
+            }}
+          >
+            <input
+              type="file"
+              accept=".csv"
+              onChange={(e) => e.target.files?.[0] && handleFileUpload(e.target.files[0])}
+              className="hidden"
+              id="csv-upload"
+              disabled={uploading}
+            />
+            <label htmlFor="csv-upload" className="cursor-pointer">
+              {uploading ? (
+                <div className="flex flex-col items-center">
+                  <div className="w-12 h-12 border-3 border-t-transparent rounded-full animate-spin mb-4" style={{ borderColor: 'var(--accent)', borderTopColor: 'transparent' }} />
+                  <p style={{ color: 'var(--text-muted)' }}>Parsing CSV...</p>
+                </div>
+              ) : (
+                <>
+                  <BarChart3 className="w-12 h-12 mx-auto mb-4" style={{ color: 'var(--text-muted)' }} />
+                  <h4 className="font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>
+                    Upload Project Plan
+                  </h4>
+                  <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>
+                    <span style={{ color: 'var(--accent)' }} className="font-medium">Click to upload</span> or drag and drop a CSV file
+                  </p>
+                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                    Columns: Task ID, Phase, Task Name, Description, Owner, Start Date, End Date, Status, Dependencies, Notes
+                  </p>
+                </>
+              )}
+            </label>
+          </div>
+          {uploadError && (
+            <p className="text-sm text-red-500 mt-4">{uploadError}</p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-6">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h3 className="font-semibold text-lg" style={{ color: 'var(--text-primary)' }}>
+            Project Plan
+          </h3>
+          <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+            {projectTasks.length} tasks across {phases.length} phases
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          {/* View toggle */}
+          <div className="flex p-1 rounded-lg" style={{ background: 'var(--bg-secondary)' }}>
+            <button
+              onClick={() => setViewMode('gantt')}
+              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${viewMode === 'gantt' ? 'shadow-sm' : ''}`}
+              style={{
+                background: viewMode === 'gantt' ? 'var(--bg-primary)' : 'transparent',
+                color: viewMode === 'gantt' ? 'var(--text-primary)' : 'var(--text-muted)',
+              }}
+            >
+              Gantt
+            </button>
+            <button
+              onClick={() => setViewMode('table')}
+              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${viewMode === 'table' ? 'shadow-sm' : ''}`}
+              style={{
+                background: viewMode === 'table' ? 'var(--bg-primary)' : 'transparent',
+                color: viewMode === 'table' ? 'var(--text-primary)' : 'var(--text-muted)',
+              }}
+            >
+              Table
+            </button>
+          </div>
+
+          {/* Export button */}
+          <button
+            onClick={handleExport}
+            disabled={exporting}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all hover:scale-[1.02]"
+            style={{ background: 'var(--accent)', color: 'white' }}
+          >
+            {exporting ? (
+              <div className="w-4 h-4 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: 'white', borderTopColor: 'transparent' }} />
+            ) : (
+              <Download className="w-4 h-4" />
+            )}
+            Export to Excel
+          </button>
+
+          {/* Upload new */}
+          <label className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium cursor-pointer" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}>
+            <Upload className="w-4 h-4" />
+            Upload New
+            <input
+              type="file"
+              accept=".csv"
+              onChange={(e) => e.target.files?.[0] && handleFileUpload(e.target.files[0])}
+              className="hidden"
+            />
+          </label>
+        </div>
+      </div>
+
+      {/* Status Legend */}
+      <div className="flex items-center gap-4 mb-6">
+        {Object.entries(STATUS_LABELS).map(([key, label]) => (
+          <div key={key} className="flex items-center gap-2">
+            <div className="w-3 h-3 rounded-full" style={{ background: STATUS_COLORS[key] }} />
+            <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{label}</span>
+          </div>
+        ))}
+      </div>
+
+      {viewMode === 'gantt' ? (
+        /* Gantt Chart View */
+        <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--border)' }}>
+          {/* Timeline header */}
+          <div className="flex" style={{ background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }}>
+            <div className="w-80 flex-shrink-0 px-4 py-3 font-medium text-sm" style={{ color: 'var(--text-primary)', borderRight: '1px solid var(--border)' }}>
+              Task
+            </div>
+            <div className="flex-1 flex overflow-x-auto">
+              {weeks.map((week, i) => (
+                <div
+                  key={i}
+                  className="flex-1 min-w-[60px] px-2 py-3 text-center text-xs font-medium"
+                  style={{ color: 'var(--text-muted)', borderRight: '1px solid var(--border)' }}
+                >
+                  {format(week, 'MMM d')}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Tasks by phase */}
+          {phases.map((phase, phaseIndex) => (
+            <div key={phase}>
+              {/* Phase header */}
+              <div
+                className="flex items-center px-4 py-2 font-semibold text-sm"
+                style={{
+                  background: 'var(--bg-secondary)',
+                  color: 'var(--text-primary)',
+                  borderBottom: '1px solid var(--border)',
+                }}
+              >
+                {phase}
+              </div>
+
+              {/* Phase tasks */}
+              {projectTasks
+                .filter(t => t.phase === phase)
+                .map((task, taskIndex) => {
+                  const taskStyle = getTaskStyle(task);
+                  return (
+                    <div
+                      key={task.id}
+                      className="flex group hover:bg-gray-50/50"
+                      style={{ borderBottom: '1px solid var(--border)' }}
+                    >
+                      {/* Task info */}
+                      <div
+                        className="w-80 flex-shrink-0 px-4 py-3"
+                        style={{ borderRight: '1px solid var(--border)' }}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
+                            {task.task_id}
+                          </span>
+                          <span className="text-sm truncate" style={{ color: 'var(--text-primary)' }}>
+                            {task.name}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 mt-1">
+                          {task.owner && (
+                            <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                              {task.owner}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Gantt bar */}
+                      <div className="flex-1 relative py-2 px-1">
+                        <div className="absolute inset-y-2 left-0 right-0">
+                          <div
+                            className="absolute h-full rounded-md transition-all"
+                            style={{
+                              left: taskStyle.left,
+                              width: taskStyle.width,
+                              background: STATUS_COLORS[task.status],
+                              minWidth: '4px',
+                            }}
+                          >
+                            <span className="absolute inset-0 flex items-center px-2 text-xs text-white font-medium truncate">
+                              {parseFloat(taskStyle.width) > 8 ? task.name : ''}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          ))}
+        </div>
+      ) : (
+        /* Table View */
+        <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--border)' }}>
+          <table className="w-full">
+            <thead>
+              <tr style={{ background: 'var(--bg-secondary)' }}>
+                <th className="px-4 py-3 text-left text-xs font-medium" style={{ color: 'var(--text-muted)' }}>ID</th>
+                <th className="px-4 py-3 text-left text-xs font-medium" style={{ color: 'var(--text-muted)' }}>Phase</th>
+                <th className="px-4 py-3 text-left text-xs font-medium" style={{ color: 'var(--text-muted)' }}>Task</th>
+                <th className="px-4 py-3 text-left text-xs font-medium" style={{ color: 'var(--text-muted)' }}>Owner</th>
+                <th className="px-4 py-3 text-left text-xs font-medium" style={{ color: 'var(--text-muted)' }}>Start</th>
+                <th className="px-4 py-3 text-left text-xs font-medium" style={{ color: 'var(--text-muted)' }}>End</th>
+                <th className="px-4 py-3 text-left text-xs font-medium" style={{ color: 'var(--text-muted)' }}>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {projectTasks.map((task, i) => (
+                <tr
+                  key={task.id}
+                  style={{
+                    background: i % 2 === 0 ? 'var(--bg-primary)' : 'var(--bg-secondary)',
+                    borderBottom: '1px solid var(--border)',
+                  }}
+                >
+                  <td className="px-4 py-3 text-sm font-mono" style={{ color: 'var(--text-muted)' }}>{task.task_id}</td>
+                  <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>{task.phase}</td>
+                  <td className="px-4 py-3">
+                    <div className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{task.name}</div>
+                    {task.description && (
+                      <div className="text-xs mt-0.5 truncate max-w-xs" style={{ color: 'var(--text-muted)' }}>{task.description}</div>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>{task.owner || '-'}</td>
+                  <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>
+                    {task.start_date ? format(parseISO(task.start_date), 'MMM d') : '-'}
+                  </td>
+                  <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>
+                    {task.end_date ? format(parseISO(task.end_date), 'MMM d') : '-'}
+                  </td>
+                  <td className="px-4 py-3">
+                    <span
+                      className="px-2 py-1 rounded-full text-xs font-medium"
+                      style={{
+                        background: `${STATUS_COLORS[task.status]}20`,
+                        color: STATUS_COLORS[task.status],
+                      }}
+                    >
+                      {STATUS_LABELS[task.status]}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

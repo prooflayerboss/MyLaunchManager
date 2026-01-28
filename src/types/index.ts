@@ -230,3 +230,28 @@ export interface Project {
 }
 
 export type TimeScale = 'day' | 'week' | 'month';
+
+// Project Plan Tasks (from CSV import)
+export type ProjectTaskStatus = 'not_started' | 'in_progress' | 'blocked' | 'complete';
+
+export interface ProjectTask {
+  id: string;
+  partner_id: string;
+  task_id: string;
+  phase: string;
+  name: string;
+  description: string | null;
+  owner: string | null;
+  start_date: string;
+  end_date: string;
+  status: ProjectTaskStatus;
+  dependencies: string[];
+  notes: string | null;
+  sort_order: number;
+  created_at: string;
+}
+
+export interface ProjectTaskGroup {
+  phase: string;
+  tasks: ProjectTask[];
+}
