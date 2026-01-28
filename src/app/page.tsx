@@ -26,14 +26,14 @@ export default function Home() {
               Features
             </Link>
             <Link
-              href="/demo"
+              href="/login"
               className="text-sm font-medium transition-colors hover:opacity-70"
               style={{ color: 'var(--text-secondary)' }}
             >
-              Demo
+              Sign In
             </Link>
             <Link
-              href="/demo"
+              href="/signup"
               className="text-sm font-semibold px-4 py-2 rounded-lg transition-all hover:scale-[1.02] active:scale-[0.98]"
               style={{ background: 'var(--accent)', color: 'white' }}
             >
@@ -87,11 +87,11 @@ export default function Home() {
           {/* CTA buttons */}
           <div className="flex flex-col sm:flex-row gap-4 opacity-0 animate-fade-up animation-delay-300">
             <Link
-              href="/demo"
+              href="/signup"
               className="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl text-base font-semibold transition-all hover:scale-[1.02] active:scale-[0.98] shadow-lg"
               style={{ background: 'var(--accent)', color: 'white', boxShadow: '0 4px 14px rgba(229, 77, 46, 0.3)' }}
             >
-              Try the demo
+              Start for free
               <ArrowRight className="w-4 h-4" />
             </Link>
             <Link
@@ -334,11 +334,11 @@ export default function Home() {
             Join launch managers who stopped wrestling with spreadsheets.
           </p>
           <Link
-            href="/demo"
+            href="/signup"
             className="inline-flex items-center justify-center gap-2 px-8 py-4 rounded-xl text-lg font-semibold transition-all hover:scale-[1.02] active:scale-[0.98]"
             style={{ background: 'var(--accent)', color: 'white', boxShadow: '0 4px 14px rgba(229, 77, 46, 0.3)' }}
           >
-            Try the demo free
+            Get started free
             <ArrowRight className="w-5 h-5" />
           </Link>
         </div>

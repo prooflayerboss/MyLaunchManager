@@ -59,7 +59,15 @@ export function useSettings() {
           .single();
         setSettings(newSettings);
       } else if (data) {
-        setSettings(data);
+        // Merge with defaults to fill in any missing fields
+        const mergedSettings = {
+          ...DEFAULT_SETTINGS,
+          ...data,
+          // Ensure arrays use defaults if empty/null
+          statuses: data.statuses?.length ? data.statuses : DEFAULT_SETTINGS.statuses,
+          default_workstreams: data.default_workstreams?.length ? data.default_workstreams : DEFAULT_SETTINGS.default_workstreams,
+        } as OrganizationSettings;
+        setSettings(mergedSettings);
       }
 
       setLoading(false);

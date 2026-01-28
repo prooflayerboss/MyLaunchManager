@@ -134,24 +134,54 @@ export default function OnboardingPage() {
   };
 
   const handleComplete = async () => {
-    if (!settingsId) return;
     setLoading(true);
 
-    const { error } = await supabase
-      .from('organization_settings')
-      .update({
-        partner_label: partnerLabel,
-        partner_label_plural: partnerLabelPlural,
-        default_workstreams: workstreams,
-        statuses: statuses,
-        onboarding_completed: true,
-      })
-      .eq('id', settingsId);
-
-    if (!error) {
-      router.push('/dashboard');
+    // Get current user to ensure we update the right record
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      console.error('No user found');
+      setLoading(false);
+      return;
     }
-    setLoading(false);
+
+    const settingsData = {
+      partner_label: partnerLabel,
+      partner_label_plural: partnerLabelPlural,
+      default_workstreams: workstreams,
+      statuses: statuses,
+      onboarding_completed: true,
+    };
+
+    // First try to update existing settings
+    const { data: updateData, error: updateError } = await supabase
+      .from('organization_settings')
+      .update(settingsData)
+      .eq('user_id', user.id)
+      .select();
+
+    if (updateError) {
+      console.error('Update failed:', updateError);
+      alert('Failed to save settings: ' + updateError.message);
+      setLoading(false);
+      return;
+    }
+
+    // If no rows were updated, insert new settings
+    if (!updateData || updateData.length === 0) {
+      const { error: insertError } = await supabase
+        .from('organization_settings')
+        .insert({ user_id: user.id, ...settingsData });
+
+      if (insertError) {
+        console.error('Insert failed:', insertError);
+        alert('Failed to save settings: ' + insertError.message);
+        setLoading(false);
+        return;
+      }
+    }
+
+    // Use full page reload to ensure fresh settings are fetched
+    window.location.href = '/dashboard';
   };
 
   return (

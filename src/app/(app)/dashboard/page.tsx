@@ -6,14 +6,18 @@ import Link from 'next/link';
 import { useSettings, getHealthColor, getHealthWord } from '@/hooks/useSettings';
 import {
   Plus, Rocket, AlertTriangle, Calendar, CheckCircle2,
-  ArrowRight, Clock, Target
+  ArrowRight, Clock, Target, User, Users, FileText, Phone
 } from 'lucide-react';
-import { Partner, DashboardStats } from '@/types';
+import { Partner, DashboardStats, Workstream } from '@/types';
 import { format, differenceInDays, startOfMonth, endOfMonth } from 'date-fns';
+
+interface PartnerWithWorkstreams extends Partner {
+  workstreams?: Workstream[];
+}
 
 export default function DashboardPage() {
   const { settings, loading: settingsLoading } = useSettings();
-  const [partners, setPartners] = useState<Partner[]>([]);
+  const [partners, setPartners] = useState<PartnerWithWorkstreams[]>([]);
   const [stats, setStats] = useState<DashboardStats>({
     total_active: 0,
     launching_this_month: 0,
@@ -37,7 +41,19 @@ export default function DashboardPage() {
         .order('updated_at', { ascending: false });
 
       if (partnersData) {
-        setPartners(partnersData);
+        // Fetch workstreams for all partners
+        const { data: workstreamsData } = await supabase
+          .from('workstreams')
+          .select('*')
+          .eq('user_id', user.id);
+
+        // Attach workstreams to partners
+        const partnersWithWorkstreams = partnersData.map(partner => ({
+          ...partner,
+          workstreams: workstreamsData?.filter(w => w.partner_id === partner.id) || [],
+        }));
+
+        setPartners(partnersWithWorkstreams);
 
         // Calculate stats
         const now = new Date();
@@ -85,7 +101,28 @@ export default function DashboardPage() {
   });
 
   const getStatusConfig = (status: string) => {
-    return settings?.statuses?.find(s => s.value === status) || { label: status, color: '#6B7280' };
+    // Check custom statuses first, then fall back to default
+    const customStatus = settings?.statuses?.find(s => s.value === status);
+    if (customStatus) return customStatus;
+
+    // Default status colors for our new statuses
+    const defaultStatuses: Record<string, { label: string; color: string }> = {
+      'not_started': { label: 'Not Started', color: '#6B7280' },
+      'initiation': { label: 'Initiation', color: '#8B5CF6' },
+      'discovery': { label: 'Discovery', color: '#22C55E' },
+      'configuration': { label: 'Configuration', color: '#F59E0B' },
+      'internal_testing': { label: 'Internal Testing', color: '#22C55E' },
+      'uat': { label: 'UAT', color: '#EAB308' },
+      'go_no_go': { label: 'Go No Go', color: '#EAB308' },
+      'soft_launch': { label: 'Soft Launch', color: '#F59E0B' },
+      'live': { label: 'LIVE', color: '#22C55E' },
+      'optimisation': { label: 'Optimisation', color: '#F97316' },
+      'on_hold': { label: 'On Hold', color: '#EAB308' },
+      'blocked': { label: 'Blocked', color: '#EF4444' },
+      'closed': { label: 'Closed', color: '#6B7280' },
+    };
+
+    return defaultStatuses[status] || { label: status, color: '#6B7280' };
   };
 
   return (
@@ -231,51 +268,201 @@ export default function DashboardPage() {
           </div>
         ) : (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {partners.slice(0, 6).map(partner => {
-              const statusConfig = getStatusConfig(partner.status);
-              const daysUntilLaunch = partner.target_launch_date
-                ? differenceInDays(new Date(partner.target_launch_date), new Date())
-                : null;
-
-              return (
-                <Link
-                  key={partner.id}
-                  href={`/partners/${partner.id}`}
-                  className="p-5 rounded-xl transition-all hover:scale-[1.02] group"
-                  style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)' }}
-                >
-                  <div className="flex items-start justify-between mb-3">
-                    <div
-                      className="px-2 py-1 rounded-full text-xs font-medium"
-                      style={{ background: `${statusConfig.color}20`, color: statusConfig.color }}
-                    >
-                      {statusConfig.label}
-                    </div>
-                    <div
-                      className="w-8 h-8 rounded-lg flex items-center justify-center text-sm font-semibold text-white"
-                      style={{ background: getHealthColor(partner.health_score, healthMax) }}
-                    >
-                      {partner.health_score}
-                    </div>
-                  </div>
-                  <h3 className="font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>
-                    {partner.name}
-                  </h3>
-                  {partner.target_launch_date && (
-                    <div className="flex items-center gap-1 text-sm" style={{ color: 'var(--text-muted)' }}>
-                      <Calendar className="w-4 h-4" />
-                      {daysUntilLaunch !== null && daysUntilLaunch >= 0
-                        ? `${daysUntilLaunch} days to launch`
-                        : format(new Date(partner.target_launch_date), 'MMM d, yyyy')}
-                    </div>
-                  )}
-                </Link>
-              );
-            })}
+            {partners.slice(0, 6).map(partner => (
+              <PartnerCard
+                key={partner.id}
+                partner={partner}
+                healthMax={healthMax}
+                getStatusConfig={getStatusConfig}
+              />
+            ))}
           </div>
         )}
       </div>
     </div>
+  );
+}
+
+// Role labels for display
+const ROLE_LABELS: Record<string, string> = {
+  pm: 'PM',
+  aide: 'AIDE',
+  csm: 'CSM',
+  kms: 'KMS',
+  ai_trainer: 'AI Trainer',
+  account_executive: 'AE',
+  solutions_architect: 'SA',
+  technical_lead: 'Tech Lead',
+  implementation_specialist: 'Impl Spec',
+  other: '',
+};
+
+function PartnerCard({
+  partner,
+  healthMax,
+  getStatusConfig,
+}: {
+  partner: PartnerWithWorkstreams;
+  healthMax: number;
+  getStatusConfig: (status: string) => { label: string; color: string };
+}) {
+  const statusConfig = getStatusConfig(partner.status);
+  const daysUntilLaunch = partner.target_launch_date
+    ? differenceInDays(new Date(partner.target_launch_date), new Date())
+    : null;
+
+  // Calculate workstream progress
+  const totalWorkstreams = partner.workstreams?.length || 0;
+  const completedWorkstreams = partner.workstreams?.filter(w => w.status === 'complete').length || 0;
+  const progressPercent = totalWorkstreams > 0 ? (completedWorkstreams / totalWorkstreams) * 100 : 0;
+
+  // Get custom fields
+  const customFields = partner.custom_fields || {};
+  const stakeholders = customFields.stakeholders || [];
+  const discoveryScheduled = customFields.discovery_scheduled;
+  const discoveryDate = customFields.discovery_date;
+  const assignedDate = customFields.assigned_date;
+
+  // Format stakeholders for display
+  const formatStakeholder = (s: { name: string; role: string }) => {
+    const roleLabel = ROLE_LABELS[s.role] || s.role;
+    return roleLabel ? `${s.name} (${roleLabel})` : s.name;
+  };
+
+  return (
+    <Link
+      href={`/partners/${partner.id}`}
+      className="p-5 rounded-xl transition-all hover:scale-[1.02] hover:shadow-lg group"
+      style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)' }}
+    >
+      {/* Header: Status & Health */}
+      <div className="flex items-start justify-between mb-3">
+        <div
+          className="px-2.5 py-1 rounded-full text-xs font-medium"
+          style={{ background: `${statusConfig.color}20`, color: statusConfig.color }}
+        >
+          {statusConfig.label}
+        </div>
+        <div className="text-right">
+          <div className="text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Health</div>
+          <div
+            className="w-9 h-9 rounded-lg flex items-center justify-center text-sm font-bold text-white"
+            style={{ background: getHealthColor(partner.health_score, healthMax) }}
+          >
+            {partner.health_score}
+          </div>
+        </div>
+      </div>
+
+      {/* Partner Name */}
+      <h3 className="font-semibold text-lg mb-3" style={{ color: 'var(--text-primary)' }}>
+        {partner.name}
+      </h3>
+
+      {/* Workstream Progress */}
+      {totalWorkstreams > 0 && (
+        <div className="mb-4">
+          <div className="flex items-center justify-between text-xs mb-1">
+            <span style={{ color: 'var(--text-muted)' }}>Workstream Progress</span>
+            <span style={{ color: 'var(--text-secondary)' }}>{completedWorkstreams}/{totalWorkstreams}</span>
+          </div>
+          <div className="h-2 rounded-full overflow-hidden" style={{ background: 'var(--border)' }}>
+            <div
+              className="h-full rounded-full transition-all"
+              style={{
+                width: `${progressPercent}%`,
+                background: progressPercent === 100 ? '#22C55E' : 'var(--accent)',
+              }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Info Table with Labels */}
+      <div className="space-y-2 text-sm">
+        {/* Launch Date */}
+        {partner.target_launch_date && (
+          <div className="flex justify-between">
+            <span style={{ color: 'var(--text-muted)' }}>Launch Date</span>
+            <span style={{ color: 'var(--text-primary)' }}>
+              {format(new Date(partner.target_launch_date), 'MMM d, yyyy')}
+              {daysUntilLaunch !== null && daysUntilLaunch >= 0 && (
+                <span style={{ color: 'var(--text-muted)' }}> ({daysUntilLaunch}d)</span>
+              )}
+            </span>
+          </div>
+        )}
+
+        {/* Last Updated */}
+        <div className="flex justify-between">
+          <span style={{ color: 'var(--text-muted)' }}>Last Sync</span>
+          <span style={{ color: 'var(--text-primary)' }}>
+            {format(new Date(partner.updated_at), 'MMM d, yyyy')}
+          </span>
+        </div>
+
+        {/* Contact */}
+        {partner.primary_contact_name && (
+          <div className="flex justify-between">
+            <span style={{ color: 'var(--text-muted)' }}>Contact</span>
+            <span className="truncate ml-2" style={{ color: 'var(--text-primary)' }}>
+              {partner.primary_contact_name}
+            </span>
+          </div>
+        )}
+
+        {/* Discovery Call */}
+        {discoveryScheduled !== null && (
+          <div className="flex justify-between">
+            <span style={{ color: 'var(--text-muted)' }}>Discovery Call</span>
+            <span style={{ color: discoveryScheduled ? '#22C55E' : 'var(--text-secondary)' }}>
+              {discoveryScheduled
+                ? discoveryDate
+                  ? format(new Date(discoveryDate), 'MMM d')
+                  : 'Scheduled'
+                : 'Not scheduled'}
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* Assigned Team */}
+      {Array.isArray(stakeholders) && stakeholders.length > 0 && (
+        <div className="mt-3 pt-3" style={{ borderTop: '1px solid var(--border)' }}>
+          <div className="text-xs mb-2" style={{ color: 'var(--text-muted)' }}>Assigned Team</div>
+          <div className="flex flex-wrap gap-1.5">
+            {stakeholders.slice(0, 4).map((s: { name: string; role: string }, i: number) => (
+              <span
+                key={i}
+                className="px-2 py-0.5 rounded text-xs"
+                style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)' }}
+              >
+                {formatStakeholder(s)}
+              </span>
+            ))}
+            {stakeholders.length > 4 && (
+              <span
+                className="px-2 py-0.5 rounded text-xs"
+                style={{ background: 'var(--bg-secondary)', color: 'var(--text-muted)' }}
+              >
+                +{stakeholders.length - 4} more
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Footer */}
+      <div className="flex items-center justify-between mt-3 pt-3" style={{ borderTop: '1px solid var(--border)' }}>
+        <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
+          0 notes
+        </div>
+        <ArrowRight
+          className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity"
+          style={{ color: 'var(--accent)' }}
+        />
+      </div>
+    </Link>
   );
 }
 
