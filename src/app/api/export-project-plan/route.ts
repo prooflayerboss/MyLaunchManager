@@ -46,15 +46,16 @@ export async function POST(request: NextRequest) {
     });
 
     // Define columns
+    // A: ID, B: Phase, C: Task Name, D: Owner, E: Start Date, F: End Date, G: Status, H: Description, I: Dependencies, J: Notes
     sheet.columns = [
       { header: 'ID', key: 'task_id', width: 6 },
       { header: 'Phase', key: 'phase', width: 20 },
       { header: 'Task Name', key: 'name', width: 40 },
-      { header: 'Description', key: 'description', width: 50 },
       { header: 'Owner', key: 'owner', width: 20 },
       { header: 'Start Date', key: 'start_date', width: 12 },
       { header: 'End Date', key: 'end_date', width: 12 },
       { header: 'Status', key: 'status', width: 14 },
+      { header: 'Description', key: 'description', width: 50 },
       { header: 'Dependencies', key: 'dependencies', width: 15 },
       { header: 'Notes', key: 'notes', width: 50 },
     ];
