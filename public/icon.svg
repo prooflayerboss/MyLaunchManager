@@ -1,0 +1,9 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="512" height="512" rx="128" fill="#E54D2E"/>
+  <g transform="translate(128, 96) scale(1.5)">
+    <path d="M85 20C85 20 140 55 140 125C140 165 120 195 95 220L85 205L75 220C50 195 30 165 30 125C30 55 85 20 85 20Z" fill="white"/>
+    <circle cx="85" cy="105" r="20" fill="#E54D2E"/>
+    <path d="M55 220L35 250L55 265L75 240" fill="white" opacity="0.85"/>
+    <path d="M115 220L135 250L115 265L95 240" fill="white" opacity="0.85"/>
+  </g>
+</svg>
