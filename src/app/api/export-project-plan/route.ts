@@ -129,7 +129,7 @@ export async function POST(request: NextRequest) {
 
     // Create Gantt sheet
     const ganttSheet = workbook.addWorksheet('Gantt Chart', {
-      views: [{ state: 'frozen', xSplit: 3, ySplit: 1 }],
+      views: [{ state: 'frozen', xSplit: 5, ySplit: 1 }],
     });
 
     // Find date range
@@ -150,7 +150,9 @@ export async function POST(request: NextRequest) {
     // Set up columns
     const ganttColumns: Partial<ExcelJS.Column>[] = [
       { header: 'ID', key: 'task_id', width: 6 },
-      { header: 'Task Name', key: 'name', width: 35 },
+      { header: 'Phase', key: 'phase', width: 18 },
+      { header: 'Task Name', key: 'name', width: 32 },
+      { header: 'Owner', key: 'owner', width: 15 },
       { header: 'Status', key: 'status', width: 12 },
     ];
 
@@ -176,7 +178,9 @@ export async function POST(request: NextRequest) {
     tasks.forEach((task: ProjectTask, index: number) => {
       const rowData: Record<string, string> = {
         task_id: task.task_id,
+        phase: task.phase || '',
         name: task.name,
+        owner: task.owner || '',
         status: STATUS_LABELS[task.status] || task.status,
       };
 
