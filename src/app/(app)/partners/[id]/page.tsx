@@ -103,6 +103,14 @@ export default function PartnerDetailPage() {
         .order('meeting_date', { ascending: false });
       setNotes(notesData || []);
 
+      // Fetch project tasks
+      const { data: projectTasksData } = await supabase
+        .from('project_tasks')
+        .select('*')
+        .eq('partner_id', partnerId)
+        .order('sort_order');
+      setProjectTasks(projectTasksData || []);
+
       setLoading(false);
     };
     fetchData();
@@ -1683,6 +1691,10 @@ function ProjectPlanTab({
   const [exporting, setExporting] = useState(false);
   const [viewMode, setViewMode] = useState<'gantt' | 'table'>('gantt');
   const [dragActive, setDragActive] = useState(false);
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [showAddTask, setShowAddTask] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
   const STATUS_COLORS: Record<string, string> = {
     complete: '#22C55E',
@@ -1696,6 +1708,106 @@ function ProjectPlanTab({
     in_progress: 'In Progress',
     blocked: 'Blocked',
     not_started: 'Not Started',
+  };
+
+  const STATUS_OPTIONS: ProjectTaskStatus[] = ['not_started', 'in_progress', 'blocked', 'complete'];
+
+  // Update a single task field
+  const updateTask = (taskId: string, field: keyof ProjectTask, value: any) => {
+    setProjectTasks(
+      projectTasks.map(t =>
+        t.id === taskId ? { ...t, [field]: value } : t
+      )
+    );
+    setHasUnsavedChanges(true);
+  };
+
+  // Add a new task
+  const addNewTask = () => {
+    const phases = [...new Set(projectTasks.map(t => t.phase).filter(Boolean))];
+    const maxTaskNum = projectTasks.reduce((max, t) => {
+      const num = parseInt(t.task_id) || 0;
+      return num > max ? num : max;
+    }, 0);
+
+    const newTask: ProjectTask = {
+      id: `new_${Date.now()}`,
+      partner_id: partnerId,
+      task_id: String(maxTaskNum + 1),
+      phase: phases[0] || 'Phase 1',
+      name: 'New Task',
+      description: null,
+      owner: null,
+      start_date: format(new Date(), 'yyyy-MM-dd'),
+      end_date: format(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), 'yyyy-MM-dd'),
+      status: 'not_started',
+      dependencies: [],
+      notes: null,
+      sort_order: projectTasks.length,
+      created_at: new Date().toISOString(),
+    };
+
+    setProjectTasks([...projectTasks, newTask]);
+    setEditingTaskId(newTask.id);
+    setHasUnsavedChanges(true);
+  };
+
+  // Delete a task
+  const deleteTask = (taskId: string) => {
+    if (window.confirm('Are you sure you want to delete this task?')) {
+      setProjectTasks(projectTasks.filter(t => t.id !== taskId));
+      setHasUnsavedChanges(true);
+    }
+  };
+
+  // Save all tasks to database
+  const saveToDatabase = async () => {
+    setSaving(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      // Delete existing tasks for this partner
+      await supabase
+        .from('project_tasks')
+        .delete()
+        .eq('partner_id', partnerId);
+
+      // Insert all current tasks
+      const tasksToInsert = projectTasks.map((task, index) => ({
+        partner_id: partnerId,
+        user_id: user.id,
+        task_id: task.task_id,
+        phase: task.phase,
+        name: task.name,
+        description: task.description,
+        owner: task.owner,
+        start_date: task.start_date,
+        end_date: task.end_date,
+        status: task.status,
+        dependencies: task.dependencies,
+        notes: task.notes,
+        sort_order: index,
+      }));
+
+      const { data, error } = await supabase
+        .from('project_tasks')
+        .insert(tasksToInsert)
+        .select();
+
+      if (error) throw error;
+
+      // Update local state with database IDs
+      if (data) {
+        setProjectTasks(data);
+      }
+
+      setHasUnsavedChanges(false);
+    } catch (error) {
+      console.error('Failed to save:', error);
+      alert('Failed to save changes. Please try again.');
+    }
+    setSaving(false);
   };
 
   const handleFileUpload = async (file: File) => {
@@ -1888,6 +2000,7 @@ function ProjectPlanTab({
           </h3>
           <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
             {projectTasks.length} tasks across {phases.length} phases
+            {hasUnsavedChanges && <span className="ml-2 text-amber-500">(unsaved changes)</span>}
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -1915,6 +2028,33 @@ function ProjectPlanTab({
             </button>
           </div>
 
+          {/* Add task button */}
+          <button
+            onClick={addNewTask}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all hover:scale-[1.02]"
+            style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}
+          >
+            <Plus className="w-4 h-4" />
+            Add Task
+          </button>
+
+          {/* Save button */}
+          {hasUnsavedChanges && (
+            <button
+              onClick={saveToDatabase}
+              disabled={saving}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all hover:scale-[1.02]"
+              style={{ background: '#22C55E', color: 'white' }}
+            >
+              {saving ? (
+                <div className="w-4 h-4 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: 'white', borderTopColor: 'transparent' }} />
+              ) : (
+                <Check className="w-4 h-4" />
+              )}
+              Save
+            </button>
+          )}
+
           {/* Export button */}
           <button
             onClick={handleExport}
@@ -1927,13 +2067,13 @@ function ProjectPlanTab({
             ) : (
               <Download className="w-4 h-4" />
             )}
-            Export to Excel
+            Export
           </button>
 
           {/* Upload new */}
           <label className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium cursor-pointer" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}>
             <Upload className="w-4 h-4" />
-            Upload New
+            Import CSV
             <input
               type="file"
               accept=".csv"
@@ -2048,59 +2188,143 @@ function ProjectPlanTab({
           ))}
         </div>
       ) : (
-        /* Table View */
+        /* Table View - Editable */
         <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--border)' }}>
-          <table className="w-full">
-            <thead>
-              <tr style={{ background: 'var(--bg-secondary)' }}>
-                <th className="px-4 py-3 text-left text-xs font-medium" style={{ color: 'var(--text-muted)' }}>ID</th>
-                <th className="px-4 py-3 text-left text-xs font-medium" style={{ color: 'var(--text-muted)' }}>Phase</th>
-                <th className="px-4 py-3 text-left text-xs font-medium" style={{ color: 'var(--text-muted)' }}>Task</th>
-                <th className="px-4 py-3 text-left text-xs font-medium" style={{ color: 'var(--text-muted)' }}>Owner</th>
-                <th className="px-4 py-3 text-left text-xs font-medium" style={{ color: 'var(--text-muted)' }}>Start</th>
-                <th className="px-4 py-3 text-left text-xs font-medium" style={{ color: 'var(--text-muted)' }}>End</th>
-                <th className="px-4 py-3 text-left text-xs font-medium" style={{ color: 'var(--text-muted)' }}>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {projectTasks.map((task, i) => (
-                <tr
-                  key={task.id}
-                  style={{
-                    background: i % 2 === 0 ? 'var(--bg-primary)' : 'var(--bg-secondary)',
-                    borderBottom: '1px solid var(--border)',
-                  }}
-                >
-                  <td className="px-4 py-3 text-sm font-mono" style={{ color: 'var(--text-muted)' }}>{task.task_id}</td>
-                  <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>{task.phase}</td>
-                  <td className="px-4 py-3">
-                    <div className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{task.name}</div>
-                    {task.description && (
-                      <div className="text-xs mt-0.5 truncate max-w-xs" style={{ color: 'var(--text-muted)' }}>{task.description}</div>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>{task.owner || '-'}</td>
-                  <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>
-                    {task.start_date ? format(parseISO(task.start_date), 'MMM d') : '-'}
-                  </td>
-                  <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>
-                    {task.end_date ? format(parseISO(task.end_date), 'MMM d') : '-'}
-                  </td>
-                  <td className="px-4 py-3">
-                    <span
-                      className="px-2 py-1 rounded-full text-xs font-medium"
-                      style={{
-                        background: `${STATUS_COLORS[task.status]}20`,
-                        color: STATUS_COLORS[task.status],
-                      }}
-                    >
-                      {STATUS_LABELS[task.status]}
-                    </span>
-                  </td>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[900px]">
+              <thead>
+                <tr style={{ background: 'var(--bg-secondary)' }}>
+                  <th className="px-3 py-3 text-left text-xs font-medium w-16" style={{ color: 'var(--text-muted)' }}>ID</th>
+                  <th className="px-3 py-3 text-left text-xs font-medium w-32" style={{ color: 'var(--text-muted)' }}>Phase</th>
+                  <th className="px-3 py-3 text-left text-xs font-medium" style={{ color: 'var(--text-muted)' }}>Task Name</th>
+                  <th className="px-3 py-3 text-left text-xs font-medium w-32" style={{ color: 'var(--text-muted)' }}>Owner</th>
+                  <th className="px-3 py-3 text-left text-xs font-medium w-28" style={{ color: 'var(--text-muted)' }}>Start</th>
+                  <th className="px-3 py-3 text-left text-xs font-medium w-28" style={{ color: 'var(--text-muted)' }}>End</th>
+                  <th className="px-3 py-3 text-left text-xs font-medium w-32" style={{ color: 'var(--text-muted)' }}>Status</th>
+                  <th className="px-3 py-3 text-left text-xs font-medium w-16" style={{ color: 'var(--text-muted)' }}></th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {projectTasks.map((task, i) => (
+                  <tr
+                    key={task.id}
+                    className="group"
+                    style={{
+                      background: i % 2 === 0 ? 'var(--bg-primary)' : 'var(--bg-secondary)',
+                      borderBottom: '1px solid var(--border)',
+                    }}
+                  >
+                    {/* Task ID */}
+                    <td className="px-3 py-2">
+                      <input
+                        type="text"
+                        value={task.task_id}
+                        onChange={(e) => updateTask(task.id, 'task_id', e.target.value)}
+                        className="w-full px-2 py-1.5 text-sm font-mono rounded border-0 bg-transparent focus:bg-white focus:ring-2 focus:ring-[var(--accent)] transition-all"
+                        style={{ color: 'var(--text-muted)' }}
+                      />
+                    </td>
+
+                    {/* Phase */}
+                    <td className="px-3 py-2">
+                      <input
+                        type="text"
+                        value={task.phase || ''}
+                        onChange={(e) => updateTask(task.id, 'phase', e.target.value)}
+                        className="w-full px-2 py-1.5 text-sm rounded border-0 bg-transparent focus:bg-white focus:ring-2 focus:ring-[var(--accent)] transition-all"
+                        style={{ color: 'var(--text-secondary)' }}
+                        placeholder="Phase"
+                      />
+                    </td>
+
+                    {/* Task Name */}
+                    <td className="px-3 py-2">
+                      <input
+                        type="text"
+                        value={task.name}
+                        onChange={(e) => updateTask(task.id, 'name', e.target.value)}
+                        className="w-full px-2 py-1.5 text-sm font-medium rounded border-0 bg-transparent focus:bg-white focus:ring-2 focus:ring-[var(--accent)] transition-all"
+                        style={{ color: 'var(--text-primary)' }}
+                        placeholder="Task name"
+                      />
+                    </td>
+
+                    {/* Owner */}
+                    <td className="px-3 py-2">
+                      <input
+                        type="text"
+                        value={task.owner || ''}
+                        onChange={(e) => updateTask(task.id, 'owner', e.target.value || null)}
+                        className="w-full px-2 py-1.5 text-sm rounded border-0 bg-transparent focus:bg-white focus:ring-2 focus:ring-[var(--accent)] transition-all"
+                        style={{ color: 'var(--text-secondary)' }}
+                        placeholder="Owner"
+                      />
+                    </td>
+
+                    {/* Start Date */}
+                    <td className="px-3 py-2">
+                      <input
+                        type="date"
+                        value={task.start_date || ''}
+                        onChange={(e) => updateTask(task.id, 'start_date', e.target.value)}
+                        className="w-full px-2 py-1.5 text-sm rounded border-0 bg-transparent focus:bg-white focus:ring-2 focus:ring-[var(--accent)] transition-all"
+                        style={{ color: 'var(--text-secondary)' }}
+                      />
+                    </td>
+
+                    {/* End Date */}
+                    <td className="px-3 py-2">
+                      <input
+                        type="date"
+                        value={task.end_date || ''}
+                        onChange={(e) => updateTask(task.id, 'end_date', e.target.value)}
+                        className="w-full px-2 py-1.5 text-sm rounded border-0 bg-transparent focus:bg-white focus:ring-2 focus:ring-[var(--accent)] transition-all"
+                        style={{ color: 'var(--text-secondary)' }}
+                      />
+                    </td>
+
+                    {/* Status */}
+                    <td className="px-3 py-2">
+                      <select
+                        value={task.status}
+                        onChange={(e) => updateTask(task.id, 'status', e.target.value as ProjectTaskStatus)}
+                        className="w-full px-2 py-1.5 text-xs font-medium rounded border-0 cursor-pointer focus:ring-2 focus:ring-[var(--accent)] transition-all"
+                        style={{
+                          background: `${STATUS_COLORS[task.status]}20`,
+                          color: STATUS_COLORS[task.status],
+                        }}
+                      >
+                        {STATUS_OPTIONS.map(status => (
+                          <option key={status} value={status}>{STATUS_LABELS[status]}</option>
+                        ))}
+                      </select>
+                    </td>
+
+                    {/* Actions */}
+                    <td className="px-3 py-2">
+                      <button
+                        onClick={() => deleteTask(task.id)}
+                        className="opacity-0 group-hover:opacity-100 p-1.5 rounded hover:bg-red-50 transition-all"
+                        title="Delete task"
+                      >
+                        <Trash2 className="w-4 h-4 text-red-500" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Add task row */}
+          <button
+            onClick={addNewTask}
+            className="w-full px-4 py-3 text-sm font-medium flex items-center justify-center gap-2 transition-colors hover:bg-gray-50"
+            style={{ color: 'var(--text-muted)', borderTop: '1px solid var(--border)' }}
+          >
+            <Plus className="w-4 h-4" />
+            Add Task
+          </button>
         </div>
       )}
     </div>
