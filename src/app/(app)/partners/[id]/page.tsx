@@ -411,6 +411,7 @@ Workstreams: ${workstreams.filter(w => w.status === 'complete').length}/${workst
             updateCopied={updateCopied}
             partner={partner}
             notes={notes}
+            clearUpdate={() => setGeneratedUpdate('')}
           />
         )}
 
@@ -1355,7 +1356,7 @@ function NotesTab({
 }
 
 // Updates Tab Component
-function UpdatesTab({ generatedUpdate, generatingUpdate, generateUpdate, copyUpdate, updateCopied, partner, notes }: any) {
+function UpdatesTab({ generatedUpdate, generatingUpdate, generateUpdate, copyUpdate, updateCopied, partner, notes, clearUpdate }: any) {
   const [selectedType, setSelectedType] = useState<string | null>(null);
   const [selectedNoteId, setSelectedNoteId] = useState<string>('');
 
@@ -1452,7 +1453,7 @@ function UpdatesTab({ generatedUpdate, generatingUpdate, generateUpdate, copyUpd
               onClick={() => {
                 setSelectedType(null);
                 setSelectedNoteId('');
-                setGeneratedUpdate('');
+                clearUpdate();
               }}
               className="text-sm px-3 py-1.5 rounded-lg hover:opacity-80 transition-opacity cursor-pointer"
               style={{ color: 'var(--text-secondary)', background: 'var(--bg-secondary)' }}
