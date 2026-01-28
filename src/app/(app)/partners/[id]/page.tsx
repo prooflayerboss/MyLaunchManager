@@ -370,6 +370,10 @@ Workstreams: ${workstreams.filter(w => w.status === 'complete').length}/${workst
             partnerId={partnerId}
             partnerName={partner.name}
             supabase={supabase}
+            partner={partner}
+            workstreams={workstreams}
+            milestones={milestones}
+            settings={settings}
           />
         )}
 
@@ -1681,12 +1685,20 @@ function ProjectPlanTab({
   partnerId,
   partnerName,
   supabase,
+  partner,
+  workstreams,
+  milestones,
+  settings,
 }: {
   projectTasks: ProjectTask[];
   setProjectTasks: (tasks: ProjectTask[]) => void;
   partnerId: string;
   partnerName: string;
   supabase: any;
+  partner: Partner;
+  workstreams: Workstream[];
+  milestones: Milestone[];
+  settings: any;
 }) {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
@@ -1697,6 +1709,8 @@ function ProjectPlanTab({
   const [showAddTask, setShowAddTask] = useState(false);
   const [saving, setSaving] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [generatingAI, setGeneratingAI] = useState(false);
+  const [aiError, setAiError] = useState('');
 
   const STATUS_COLORS: Record<string, string> = {
     complete: '#22C55E',
@@ -1898,6 +1912,60 @@ function ProjectPlanTab({
     setExporting(false);
   };
 
+  // Generate project plan with AI
+  const generateWithAI = async () => {
+    setGeneratingAI(true);
+    setAiError('');
+
+    try {
+      const response = await fetch('/api/generate-project-plan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          partner,
+          workstreams,
+          milestones,
+          settings,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        setAiError(result.error || 'Failed to generate project plan');
+        setGeneratingAI(false);
+        return;
+      }
+
+      // Convert AI-generated tasks to ProjectTask format
+      const tasks: ProjectTask[] = result.tasks.map((task: any, index: number) => ({
+        id: `ai_${index}_${Date.now()}`,
+        partner_id: partnerId,
+        task_id: task.task_id,
+        phase: task.phase,
+        name: task.name,
+        description: task.description,
+        owner: task.owner,
+        start_date: task.start_date,
+        end_date: task.end_date,
+        status: task.status as ProjectTaskStatus,
+        dependencies: task.dependencies,
+        notes: task.notes,
+        sort_order: index,
+        created_at: new Date().toISOString(),
+      }));
+
+      setProjectTasks(tasks);
+      setHasUnsavedChanges(true);
+      setViewMode('gantt');
+    } catch (error) {
+      console.error('AI generation failed:', error);
+      setAiError('Failed to generate project plan. Please try again.');
+    }
+
+    setGeneratingAI(false);
+  };
+
   // Group tasks by phase
   const phases = [...new Set(projectTasks.map(t => t.phase).filter(Boolean))];
 
@@ -1953,12 +2021,46 @@ function ProjectPlanTab({
             Build a timeline with tasks, phases, and deadlines. Visualize progress with an interactive Gantt chart.
           </p>
 
+          {/* Generate with AI - Primary Option */}
+          <button
+            onClick={generateWithAI}
+            disabled={generatingAI}
+            className="flex items-center gap-3 px-8 py-4 rounded-xl font-medium transition-all hover:scale-[1.02] mx-auto mb-6 disabled:opacity-60 disabled:cursor-not-allowed"
+            style={{
+              background: 'linear-gradient(135deg, var(--accent), #8B5CF6)',
+              color: 'white',
+              boxShadow: '0 4px 14px rgba(139, 92, 246, 0.3)'
+            }}
+          >
+            {generatingAI ? (
+              <>
+                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                Generating Plan...
+              </>
+            ) : (
+              <>
+                <Sparkles className="w-5 h-5" />
+                Generate with AI
+              </>
+            )}
+          </button>
+
+          <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>
+            Claude will create a tailored project plan based on your {settings?.partner_label?.toLowerCase() || 'partner'}'s context
+          </p>
+
+          <div className="flex items-center justify-center gap-6 mb-8">
+            <div className="h-px w-16" style={{ background: 'var(--border)' }} />
+            <span className="text-sm" style={{ color: 'var(--text-muted)' }}>or choose manually</span>
+            <div className="h-px w-16" style={{ background: 'var(--border)' }} />
+          </div>
+
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-8">
             {/* Start from scratch */}
             <button
               onClick={addNewTask}
               className="flex items-center gap-2 px-6 py-3 rounded-xl font-medium transition-all hover:scale-[1.02]"
-              style={{ background: 'var(--accent)', color: 'white' }}
+              style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}
             >
               <Plus className="w-5 h-5" />
               Start from Scratch
@@ -2003,8 +2105,8 @@ function ProjectPlanTab({
             )}
           </div>
 
-          {uploadError && (
-            <p className="text-sm text-red-500 mt-4">{uploadError}</p>
+          {(uploadError || aiError) && (
+            <p className="text-sm text-red-500 mt-4">{uploadError || aiError}</p>
           )}
 
           {/* CSV format help */}
