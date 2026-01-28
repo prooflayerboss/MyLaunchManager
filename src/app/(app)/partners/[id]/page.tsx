@@ -1749,6 +1749,7 @@ function ProjectPlanTab({
 
     setProjectTasks([...projectTasks, newTask]);
     setEditingTaskId(newTask.id);
+    setViewMode('table'); // Switch to table view for editing
     setHasUnsavedChanges(true);
   };
 
@@ -2133,89 +2134,101 @@ function ProjectPlanTab({
 
       {viewMode === 'gantt' ? (
         /* Gantt Chart View */
-        <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--border)' }}>
-          {/* Timeline header */}
-          <div className="flex" style={{ background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }}>
-            <div className="w-80 flex-shrink-0 px-4 py-3 font-medium text-sm" style={{ color: 'var(--text-primary)', borderRight: '1px solid var(--border)' }}>
-              Task
-            </div>
-            <div className="flex-1 flex overflow-x-auto">
-              {weeks.map((week, i) => (
-                <div
-                  key={i}
-                  className="flex-1 min-w-[60px] px-2 py-3 text-center text-xs font-medium"
-                  style={{ color: 'var(--text-muted)', borderRight: '1px solid var(--border)' }}
-                >
-                  {format(week, 'MMM d')}
-                </div>
-              ))}
-            </div>
-          </div>
+        <div>
+          {/* Edit hint */}
+          <p className="text-xs mb-3 flex items-center gap-1" style={{ color: 'var(--text-muted)' }}>
+            <Edit2 className="w-3 h-3" />
+            Click any task to edit in Table view
+          </p>
 
-          {/* Tasks by phase */}
-          {phases.map((phase, phaseIndex) => (
-            <div key={phase}>
-              {/* Phase header */}
-              <div
-                className="flex items-center px-4 py-2 font-semibold text-sm"
-                style={{
-                  background: 'var(--bg-secondary)',
-                  color: 'var(--text-primary)',
-                  borderBottom: '1px solid var(--border)',
-                }}
-              >
-                {phase}
+          <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--border)' }}>
+            {/* Timeline header */}
+            <div className="flex" style={{ background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }}>
+              <div className="w-80 flex-shrink-0 px-4 py-3 font-medium text-sm" style={{ color: 'var(--text-primary)', borderRight: '1px solid var(--border)' }}>
+                Task
               </div>
+              <div className="flex-1 flex overflow-x-auto">
+                {weeks.map((week, i) => (
+                  <div
+                    key={i}
+                    className="flex-1 min-w-[60px] px-2 py-3 text-center text-xs font-medium"
+                    style={{ color: 'var(--text-muted)', borderRight: '1px solid var(--border)' }}
+                  >
+                    {format(week, 'MMM d')}
+                  </div>
+                ))}
+              </div>
+            </div>
 
-              {/* Phase tasks */}
-              {projectTasks
-                .filter(t => t.phase === phase)
-                .map((task, taskIndex) => {
-                  const taskStyle = getTaskStyle(task);
-                  return (
-                    <div
-                      key={task.id}
-                      className="flex group hover:bg-gray-50/50"
-                      style={{ borderBottom: '1px solid var(--border)' }}
-                    >
-                      {/* Task info */}
+            {/* Tasks by phase */}
+            {phases.map((phase, phaseIndex) => (
+              <div key={phase}>
+                {/* Phase header */}
+                <div
+                  className="flex items-center px-4 py-2 font-semibold text-sm"
+                  style={{
+                    background: 'var(--bg-secondary)',
+                    color: 'var(--text-primary)',
+                    borderBottom: '1px solid var(--border)',
+                  }}
+                >
+                  {phase}
+                </div>
+
+                {/* Phase tasks */}
+                {projectTasks
+                  .filter(t => t.phase === phase)
+                  .map((task, taskIndex) => {
+                    const taskStyle = getTaskStyle(task);
+                    return (
                       <div
-                        className="w-80 flex-shrink-0 px-4 py-3"
-                        style={{ borderRight: '1px solid var(--border)' }}
+                        key={task.id}
+                        className="flex group hover:bg-blue-50/50 cursor-pointer transition-colors"
+                        style={{ borderBottom: '1px solid var(--border)' }}
+                        onClick={() => {
+                          setEditingTaskId(task.id);
+                          setViewMode('table');
+                        }}
+                        title="Click to edit"
                       >
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
-                            {task.task_id}
-                          </span>
-                          <span className="text-sm truncate" style={{ color: 'var(--text-primary)' }}>
-                            {task.name}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2 mt-1">
-                          {task.owner && (
-                            <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                              {task.owner}
+                        {/* Task info */}
+                        <div
+                          className="w-80 flex-shrink-0 px-4 py-3"
+                          style={{ borderRight: '1px solid var(--border)' }}
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
+                              {task.task_id}
                             </span>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Gantt bar */}
-                      <div className="flex-1 relative py-2 px-1">
-                        <div className="absolute inset-y-2 left-0 right-0">
-                          <div
-                            className="absolute h-full rounded-md transition-all"
-                            style={{
-                              left: taskStyle.left,
-                              width: taskStyle.width,
-                              background: STATUS_COLORS[task.status],
-                              minWidth: '4px',
-                            }}
-                          >
-                            <span className="absolute inset-0 flex items-center px-2 text-xs text-white font-medium truncate">
-                              {parseFloat(taskStyle.width) > 8 ? task.name : ''}
+                            <span className="text-sm truncate" style={{ color: 'var(--text-primary)' }}>
+                              {task.name}
                             </span>
                           </div>
+                          <div className="flex items-center gap-2 mt-1">
+                            {task.owner && (
+                              <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                                {task.owner}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Gantt bar */}
+                        <div className="flex-1 relative py-2 px-1">
+                          <div className="absolute inset-y-2 left-0 right-0">
+                            <div
+                              className="absolute h-full rounded-md transition-all"
+                              style={{
+                                left: taskStyle.left,
+                                width: taskStyle.width,
+                                background: STATUS_COLORS[task.status],
+                                minWidth: '4px',
+                              }}
+                            >
+                              <span className="absolute inset-0 flex items-center px-2 text-xs text-white font-medium truncate">
+                                {parseFloat(taskStyle.width) > 8 ? task.name : ''}
+                              </span>
+                            </div>
                         </div>
                       </div>
                     </div>
@@ -2223,6 +2236,7 @@ function ProjectPlanTab({
                 })}
             </div>
           ))}
+          </div>
         </div>
       ) : (
         /* Table View - Editable */
