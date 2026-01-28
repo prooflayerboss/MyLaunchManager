@@ -1942,49 +1942,86 @@ function ProjectPlanTab({
     return (
       <div className="p-6">
         <div className="text-center py-12">
+          <BarChart3 className="w-16 h-16 mx-auto mb-6" style={{ color: 'var(--text-muted)' }} />
+          <h3 className="text-xl font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>
+            Create Your Project Plan
+          </h3>
+          <p className="text-sm mb-8 max-w-md mx-auto" style={{ color: 'var(--text-muted)' }}>
+            Build a timeline with tasks, phases, and deadlines. Visualize progress with an interactive Gantt chart.
+          </p>
+
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-8">
+            {/* Start from scratch */}
+            <button
+              onClick={addNewTask}
+              className="flex items-center gap-2 px-6 py-3 rounded-xl font-medium transition-all hover:scale-[1.02]"
+              style={{ background: 'var(--accent)', color: 'white' }}
+            >
+              <Plus className="w-5 h-5" />
+              Start from Scratch
+            </button>
+
+            <span style={{ color: 'var(--text-muted)' }}>or</span>
+
+            {/* Import CSV */}
+            <label className="flex items-center gap-2 px-6 py-3 rounded-xl font-medium cursor-pointer transition-all hover:scale-[1.02]" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}>
+              <Upload className="w-5 h-5" />
+              Import from CSV
+              <input
+                type="file"
+                accept=".csv"
+                onChange={(e) => e.target.files?.[0] && handleFileUpload(e.target.files[0])}
+                className="hidden"
+                disabled={uploading}
+              />
+            </label>
+          </div>
+
+          {/* Drag and drop area */}
           <div
             onDrop={handleDrop}
             onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
             onDragLeave={() => setDragActive(false)}
-            className={`max-w-md mx-auto p-8 rounded-2xl border-2 border-dashed transition-all ${dragActive ? 'border-[var(--accent)] bg-[var(--accent-soft)]' : ''}`}
+            className={`max-w-lg mx-auto p-6 rounded-xl border-2 border-dashed transition-all ${dragActive ? 'border-[var(--accent)] bg-[var(--accent-soft)]' : ''}`}
             style={{
               borderColor: dragActive ? 'var(--accent)' : 'var(--border)',
-              background: dragActive ? 'var(--accent-soft)' : 'var(--bg-secondary)',
+              background: dragActive ? 'var(--accent-soft)' : 'transparent',
             }}
           >
-            <input
-              type="file"
-              accept=".csv"
-              onChange={(e) => e.target.files?.[0] && handleFileUpload(e.target.files[0])}
-              className="hidden"
-              id="csv-upload"
-              disabled={uploading}
-            />
-            <label htmlFor="csv-upload" className="cursor-pointer">
-              {uploading ? (
-                <div className="flex flex-col items-center">
-                  <div className="w-12 h-12 border-3 border-t-transparent rounded-full animate-spin mb-4" style={{ borderColor: 'var(--accent)', borderTopColor: 'transparent' }} />
-                  <p style={{ color: 'var(--text-muted)' }}>Parsing CSV...</p>
-                </div>
-              ) : (
-                <>
-                  <BarChart3 className="w-12 h-12 mx-auto mb-4" style={{ color: 'var(--text-muted)' }} />
-                  <h4 className="font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>
-                    Upload Project Plan
-                  </h4>
-                  <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>
-                    <span style={{ color: 'var(--accent)' }} className="font-medium">Click to upload</span> or drag and drop a CSV file
-                  </p>
-                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                    Columns: Task ID, Phase, Task Name, Description, Owner, Start Date, End Date, Status, Dependencies, Notes
-                  </p>
-                </>
-              )}
-            </label>
+            {uploading ? (
+              <div className="flex items-center justify-center gap-3">
+                <div className="w-5 h-5 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: 'var(--accent)', borderTopColor: 'transparent' }} />
+                <span style={{ color: 'var(--text-muted)' }}>Parsing CSV...</span>
+              </div>
+            ) : (
+              <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                Or drag and drop a CSV file here
+              </p>
+            )}
           </div>
+
           {uploadError && (
             <p className="text-sm text-red-500 mt-4">{uploadError}</p>
           )}
+
+          {/* CSV format help */}
+          <details className="mt-8 max-w-lg mx-auto text-left">
+            <summary className="text-sm cursor-pointer" style={{ color: 'var(--text-muted)' }}>
+              CSV format guide
+            </summary>
+            <div className="mt-3 p-4 rounded-lg text-xs" style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)' }}>
+              <p className="mb-2">Your CSV should include these columns:</p>
+              <code className="block p-2 rounded" style={{ background: 'var(--bg-primary)' }}>
+                Task ID, Phase, Task Name, Description, Owner, Start Date, End Date, Status, Dependencies, Notes
+              </code>
+              <p className="mt-2">
+                <strong>Status values:</strong> Not Started, In Progress, Blocked, Complete
+              </p>
+              <p className="mt-1">
+                <strong>Date format:</strong> YYYY-MM-DD or MM/DD/YYYY
+              </p>
+            </div>
+          </details>
         </div>
       </div>
     );
