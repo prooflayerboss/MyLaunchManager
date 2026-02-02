@@ -6,9 +6,10 @@ import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import {
   Rocket, LayoutDashboard, Users, Settings, LogOut, Plus,
-  AlertTriangle, FileText, ChevronRight
+  Users2, Bell, BarChart3
 } from 'lucide-react';
 import { useSettings } from '@/hooks/useSettings';
+import { NotificationsDropdown } from '@/components/NotificationsDropdown';
 
 export default function AppLayout({
   children,
@@ -71,6 +72,7 @@ export default function AppLayout({
   const navItems = [
     { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
     { href: '/partners', icon: Users, label: partnerLabelPlural },
+    { href: '/team', icon: Users2, label: 'Team' },
     { href: '/settings', icon: Settings, label: 'Settings' },
   ];
 
@@ -84,7 +86,10 @@ export default function AppLayout({
         {/* Logo */}
         <div className="p-4">
           <Link href="/dashboard" className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: 'var(--accent)' }}>
+            <div
+              className="w-9 h-9 rounded-xl flex items-center justify-center"
+              style={{ background: 'linear-gradient(135deg, var(--accent), #8B5CF6)' }}
+            >
               <Rocket className="w-5 h-5 text-white" />
             </div>
             <span className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>
@@ -109,7 +114,7 @@ export default function AppLayout({
         <nav className="flex-1 px-3">
           <div className="space-y-1">
             {navItems.map((item) => {
-              const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
+              const isActive = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href + '/'));
               return (
                 <Link
                   key={item.href}
@@ -145,6 +150,7 @@ export default function AppLayout({
                 {user.email}
               </div>
             </div>
+            <NotificationsDropdown />
             <button
               onClick={handleSignOut}
               className="p-2 rounded-lg transition-colors hover:bg-gray-100"

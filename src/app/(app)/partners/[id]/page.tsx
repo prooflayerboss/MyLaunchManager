@@ -1749,6 +1749,7 @@ function ProjectPlanTab({
     const newTask: ProjectTask = {
       id: `new_${Date.now()}`,
       partner_id: partnerId,
+      team_id: null,
       task_id: String(maxTaskNum + 1),
       phase: phases[0] || 'Phase 1',
       name: 'New Task',
@@ -1760,6 +1761,10 @@ function ProjectPlanTab({
       dependencies: [],
       notes: null,
       sort_order: projectTasks.length,
+      is_recurring: false,
+      recurrence_rule: null,
+      next_occurrence: null,
+      parent_task_id: null,
       created_at: new Date().toISOString(),
     };
 
